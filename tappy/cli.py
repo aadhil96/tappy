@@ -12,15 +12,17 @@ import argparse
 import asyncio
 
 from . import output
-from .core import mcp_probe
+from .core import mcp_probe, registry
 from .core.config_store import ConfigStore, parse_server_fields
 from .core.models import Health, Transport
+from .core.registry import RegistryError
 from .core.resolve import ResolveError, ResolvedTarget, resolve_target
 
 # Subcommands handled here; anything else (or nothing) falls through to the TUI.
 COMMANDS = {
     "list", "ls", "clients", "add", "remove", "rm", "enable", "disable",
     "inspect", "tools", "resources", "prompts", "call", "probe",
+    "registry", "team", "apply", "lint", "sync",
 }
 
 
@@ -105,6 +107,29 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--input", dest="call_args", help="tool arguments as a JSON object")
     sp.add_argument("-a", "--arg-kv", action="append", dest="call_kv",
                     help="tool argument as key=value (repeatable; string values)")
+
+    # --- team registry (provision/standardize servers across a team) ---
+    sp = sub.add_parser("registry", aliases=["team"], help="show or create the team registry")
+    sp.add_argument("--registry", help="path to the registry file")
+    sp.add_argument("--init", action="store_true", help="create a starter registry file")
+    sp.add_argument("--from-client", help="when --init, seed from this client's servers")
+    sp.add_argument("--json", action="store_true")
+
+    sp = sub.add_parser("apply", help="provision the team registry into local client configs")
+    sp.add_argument("--registry", help="path to the registry file")
+    sp.add_argument("--client", help="only apply to this client id")
+    sp.add_argument("--dry-run", action="store_true", help="show changes without writing")
+    sp.add_argument("--json", action="store_true")
+
+    sp = sub.add_parser("lint", help="report drift between local configs and the registry")
+    sp.add_argument("--registry", help="path to the registry file")
+    sp.add_argument("--client", help="only check this client id")
+    sp.add_argument("--json", action="store_true")
+
+    sp = sub.add_parser("sync", help="copy a server from one client to another")
+    sp.add_argument("name", help="server name to copy")
+    sp.add_argument("--from", dest="from_client", help="source client id (auto if unambiguous)")
+    sp.add_argument("--to", dest="to_client", required=True, help="destination client id")
     return p
 
 
@@ -312,6 +337,156 @@ def cmd_call(store: ConfigStore, ns) -> int:
     return 1 if getattr(result, "isError", False) else 0
 
 
+# ----------------------------------------------------------------- team registry
+
+
+def _target_clients(store: ConfigStore, client_id: str | None):
+    """Discovered client configs, optionally narrowed to one client id."""
+    store.discover()
+    return [dc for dc in store.discovered if not client_id or dc.config.client_id == client_id]
+
+
+def cmd_registry(store: ConfigStore, ns) -> int:
+    if ns.init:
+        seed: dict = {}
+        if ns.from_client:
+            clients = _target_clients(store, ns.from_client)
+            if not clients:
+                output.error(f"client '{ns.from_client}' not found to seed from")
+                return 1
+            seed = dict(clients[0].config.servers)
+        path = registry.find_registry_path(ns.registry) or registry.USER_REGISTRY
+        try:
+            written = registry.init_registry(path, seed)
+        except RegistryError as exc:
+            output.error(str(exc))
+            return 1
+        output.console.print(
+            f"[green]✓[/green] created registry at {written}"
+            + (f" seeded with {len(seed)} server(s) from {ns.from_client}" if seed else "")
+        )
+        return 0
+    try:
+        reg = registry.load_registry(ns.registry)
+    except RegistryError as exc:
+        output.error(str(exc))
+        return 1
+    if ns.json:
+        output.print_json({
+            "path": str(reg.path),
+            "servers": [output.server_to_dict(s) for s in reg.servers.values()],
+        })
+    else:
+        output.console.print(f"[bold]Team registry[/bold]  [dim]{reg.path}[/dim]")
+        output.render_servers([(_RegistrySource(), s) for s in reg.servers.values()])
+    return 0
+
+
+class _RegistrySource:
+    """Adapter-shaped stand-in so render_servers can show registry rows."""
+
+    class config:  # noqa: N801 - mimic DiscoveredConfig.config.display_name
+        display_name = "team-registry"
+
+
+def cmd_apply(store: ConfigStore, ns) -> int:
+    try:
+        reg = registry.load_registry(ns.registry)
+    except RegistryError as exc:
+        output.error(str(exc))
+        return 1
+    targets = _target_clients(store, ns.client)
+    if not targets:
+        output.error("no client configs to apply to" + (f" (client '{ns.client}')" if ns.client else ""))
+        return 1
+
+    planned: list[dict] = []
+    for dc in targets:
+        for name, want in reg.servers.items():
+            have = dc.config.servers.get(name)
+            if have is None:
+                action = "add"
+            elif registry.differs(have, want):
+                action = "update"
+            else:
+                continue  # already in sync
+            planned.append({"client": dc.config.client_id, "server": name, "action": action})
+            if not ns.dry_run:
+                store.upsert_server(dc, want)
+
+    if ns.json:
+        output.print_json({"dry_run": ns.dry_run, "changes": planned})
+    elif not planned:
+        output.console.print("[green]✓[/green] all clients already match the registry")
+    else:
+        verb = "Would apply" if ns.dry_run else "Applied"
+        output.console.print(f"[bold]{verb} {len(planned)} change(s):[/bold]")
+        for c in planned:
+            output.console.print(f"  {c['action']:<6} {c['server']} → {c['client']}")
+        if not ns.dry_run:
+            output.console.print("[dim](backups written to ~/.tappy/backups/)[/dim]")
+    return 0
+
+
+def cmd_lint(store: ConfigStore, ns) -> int:
+    try:
+        reg = registry.load_registry(ns.registry)
+    except RegistryError as exc:
+        output.error(str(exc))
+        return 1
+    targets = _target_clients(store, ns.client)
+    unapproved: list[dict] = []  # local server not in registry
+    missing: list[dict] = []     # registry server absent locally
+    drifted: list[dict] = []     # present but differs
+
+    for dc in targets:
+        local = dc.config.servers
+        for name, server in local.items():
+            if name not in reg.servers:
+                unapproved.append({"client": dc.config.client_id, "server": name})
+            elif registry.differs(server, reg.servers[name]):
+                drifted.append({"client": dc.config.client_id, "server": name})
+        for name in reg.servers:
+            if name not in local:
+                missing.append({"client": dc.config.client_id, "server": name})
+
+    if ns.json:
+        output.print_json({"unapproved": unapproved, "drifted": drifted, "missing": missing})
+    else:
+        if not (unapproved or drifted or missing):
+            output.console.print("[green]✓[/green] all clients are in sync with the registry")
+        for label, items, style in (
+            ("UNAPPROVED (not in registry)", unapproved, "red"),
+            ("DRIFTED (differs from registry)", drifted, "yellow"),
+            ("MISSING (in registry, not local)", missing, "cyan"),
+        ):
+            if items:
+                output.console.print(f"[{style} bold]{label}:[/{style} bold]")
+                for c in items:
+                    output.console.print(f"  {c['server']} @ {c['client']}")
+    # Non-zero exit when there are unapproved servers — useful as a CI gate.
+    return 1 if unapproved else 0
+
+
+def cmd_sync(store: ConfigStore, ns) -> int:
+    store.discover()
+    try:
+        src = resolve_target(store, ns.name, client_id=ns.from_client)
+    except ResolveError as exc:
+        output.error(str(exc))
+        return 1
+    dst = next((dc for dc in store.discovered if dc.config.client_id == ns.to_client), None)
+    if dst is None:
+        output.error(f"destination client '{ns.to_client}' not found (config must exist)")
+        return 1
+    backup = store.upsert_server(dst, src.server)
+    output.console.print(
+        f"[green]✓[/green] copied [bold]{ns.name}[/bold] → {dst.config.display_name}  "
+        f"[dim](backup: {backup})[/dim]"
+    )
+    return 0
+
+
 _HANDLERS = {
     "list": cmd_list, "ls": cmd_list,
     "clients": cmd_clients,
@@ -325,6 +500,10 @@ _HANDLERS = {
     "resources": cmd_resources,
     "prompts": cmd_prompts,
     "call": cmd_call,
+    "registry": cmd_registry, "team": cmd_registry,
+    "apply": cmd_apply,
+    "lint": cmd_lint,
+    "sync": cmd_sync,
 }
 
 

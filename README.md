@@ -68,6 +68,22 @@ Every data command supports `--json` and returns exit code `0` on success, `1` o
 error/unreachable — so it drops straight into scripts and CI. Secret env/header *values*
 are masked in output.
 
+### Team registry (standardize servers across a team)
+Keep one git-tracked source of truth and provision it to everyone's local clients.
+
+```bash
+tappy registry --init --from-client claude_desktop   # create tappy.team.json, seeded
+tappy registry                                        # show the approved server set
+tappy apply --dry-run                                 # preview what would change
+tappy apply                                           # provision into local client configs (backed up)
+tappy lint                                            # report drift; exit 1 if unapproved servers exist (CI gate)
+tappy sync github --from claude_desktop --to cursor   # copy one server between clients
+```
+
+Registry path resolves from `--registry`, `$TAPPY_REGISTRY`, `./tappy.team.json`, then
+`~/.tappy/tappy.team.json`. Commit `tappy.team.json` to your repo; teammates run
+`tappy apply`.
+
 ### Keys (TUI)
 | Key | Action |
 |-----|--------|
