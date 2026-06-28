@@ -1,8 +1,12 @@
 # tappy
 
-A fast, keyboard-driven **terminal app to discover, configure, run, inspect and monitor
-MCP (Model Context Protocol) servers** across all your AI clients (Claude Desktop, Claude
-Code, Cursor, …) from one place.
+An **MCP management system + inspector** for your terminal — a fast keyboard-driven
+**TUI** *and* a scriptable **CLI** to discover, configure, run, inspect and monitor MCP
+(Model Context Protocol) servers across all your AI clients (Claude Desktop, Claude Code,
+Cursor, …) from one place.
+
+- **TUI** (`tappy`) — interactive dashboard for managing and probing servers.
+- **CLI** (`tappy <command>`) — pipeable management + a terminal MCP Inspector.
 
 ## Why
 
@@ -38,11 +42,33 @@ uv venv && uv pip install -e ".[dev]"
 
 ## Run
 
+### TUI (management dashboard)
 ```bash
-tappy          # or: python -m tappy
+tappy          # or: tappy ui  /  python -m tappy
 ```
 
-### Keys
+### CLI (management + inspector)
+```bash
+# management
+tappy list                       # all servers across every client (add --json to script)
+tappy clients                    # discovered client config files
+tappy add fs --command npx --arg -y --arg @modelcontextprotocol/server-filesystem --arg .
+tappy enable fs                  # / tappy disable fs
+tappy remove fs
+
+# inspector (a named server, or an ad-hoc one not yet installed)
+tappy inspect fs                 # status + tools + resources + prompts + fingerprint
+tappy tools fs --json            # tool list with input schemas
+tappy probe fs                   # one-line health + latency
+tappy call fs read_file -a path=README.md
+tappy inspect --command npx --args "-y @modelcontextprotocol/server-everything"
+```
+
+Every data command supports `--json` and returns exit code `0` on success, `1` on
+error/unreachable — so it drops straight into scripts and CI. Secret env/header *values*
+are masked in output.
+
+### Keys (TUI)
 | Key | Action |
 |-----|--------|
 | `r` | reload / rediscover configs |

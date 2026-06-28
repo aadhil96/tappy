@@ -1,7 +1,7 @@
 [project]
 name = "tappy"
 version = "0.1.0"
-description = "A terminal app to discover, configure, run, inspect, monitor and debug MCP servers across AI clients."
+description = "MCP management system + inspector CLI/TUI: discover, configure, run, inspect and monitor MCP servers across AI clients."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "tappy" }]
@@ -9,6 +9,7 @@ license = { text = "MIT" }
 dependencies = [
     "textual>=0.80",
     "mcp>=1.2",
+    "rich>=13",
 ]
 
 [project.optional-dependencies]
