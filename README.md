@@ -8,6 +8,10 @@ A fast, keyboard-driven **TUI** *and* a scriptable **CLI** to discover, configur
 inspect, monitor and standardize **MCP (Model Context Protocol)** servers across all your
 AI clients — Claude Desktop, Claude Code, Cursor, and more.
 
+[![PyPI](https://img.shields.io/pypi/v/tappy-mcp.svg)](https://pypi.org/project/tappy-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/tappy-mcp.svg)](https://pypi.org/project/tappy-mcp/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 </div>
 
 ---
@@ -96,15 +100,34 @@ config files with care.
 
 ## Install
 
-Requires Python 3.11+.
+Requires Python 3.11+. The PyPI package is **`tappy-mcp`**; it installs the **`tappy`**
+command.
+
+```bash
+pip install tappy-mcp
+```
+
+Or, to keep it isolated in its own environment (recommended for CLI tools):
+
+```bash
+pipx install tappy-mcp        # or: uv tool install tappy-mcp
+```
+
+Verify:
+
+```bash
+tappy --help
+```
+
+<details>
+<summary>Install from source (for development)</summary>
 
 ```bash
 git clone https://github.com/aadhil96/tappy.git
 cd tappy
 uv venv && uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
 ```
-
-This installs the `tappy` command.
+</details>
 
 ## Quick start
 
@@ -195,6 +218,20 @@ the official [`mcp`](https://modelcontextprotocol.io/) SDK · [Rich](https://ric
 pytest                # run the test suite
 python -m tappy ...   # equivalent to the `tappy` command
 ```
+
+## Publishing (maintainers)
+
+The distribution name on PyPI is `tappy-mcp`; the import package and CLI command are both
+`tappy`.
+
+```bash
+pip install -e ".[dev]"          # includes build + twine
+python -m build                  # creates dist/*.whl and dist/*.tar.gz
+twine check dist/*               # validate metadata + README rendering
+twine upload dist/*              # publish to PyPI (use TestPyPI first if unsure)
+```
+
+Bump `version` in `pyproject.toml` before each release and tag it (`git tag v0.1.0`).
 
 ## Roadmap
 

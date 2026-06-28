@@ -1,22 +1,55 @@
 [project]
-name = "tappy"
+name = "tappy-mcp"
 version = "0.1.0"
 description = "MCP management system + inspector CLI/TUI: discover, configure, run, inspect and monitor MCP servers across AI clients."
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "tappy" }]
-license = { text = "MIT" }
+authors = [{ name = "aadhil96" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "cli",
+    "tui",
+    "inspector",
+    "claude",
+    "cursor",
+    "ai",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Terminals",
+    "Topic :: Utilities",
+]
 dependencies = [
     "textual>=0.80",
     "mcp>=1.2",
     "rich>=13",
 ]
 
+[project.urls]
+Homepage = "https://github.com/aadhil96/tappy"
+Repository = "https://github.com/aadhil96/tappy"
+Issues = "https://github.com/aadhil96/tappy/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "textual-dev>=1.6",
+    "build>=1.2",
+    "twine>=5",
 ]
 
 [project.scripts]
