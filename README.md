@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐚 Tappy
+# Tappy
 
 **One terminal app to manage and inspect every MCP server you run.**
 
@@ -40,13 +40,13 @@ It ships as two surfaces over the same engine:
 
 Managing MCP servers today means:
 
-- ❌ **Scattered config** — `claude_desktop_config.json`, `~/.claude.json`,
+- **Scattered config** — `claude_desktop_config.json`, `~/.claude.json`,
   `.cursor/mcp.json`… all different, all edited by hand.
-- ❌ **No visibility** — you can't tell which servers start, which are healthy, or what
+- **No visibility** — you can't tell which servers start, which are healthy, or what
   tools they expose without launching a client and hoping.
-- ❌ **Risky edits** — one stray comma silently breaks a server.
-- ❌ **No team story** — everyone configures their own servers slightly differently.
-- ❌ **Security blind spots** — a server can quietly change the tools it offers *after*
+- **Risky edits** — one stray comma silently breaks a server.
+- **No team story** — everyone configures their own servers slightly differently.
+- **Security blind spots** — a server can quietly change the tools it offers *after*
   you've trusted it ("rug-pull").
 
 Tappy fixes each of these with one tool that speaks the MCP protocol and treats your
@@ -54,14 +54,14 @@ config files with care.
 
 ## Features
 
-### 🗂 Configuration & discovery
+### Configuration & discovery
 - **Auto-discovers** servers across Claude Desktop, Claude Code (user + project) and
   Cursor — plus any custom config path.
 - **Normalized model** — stdio, HTTP and SSE servers presented the same way.
 - **Guided add/edit** in the TUI — pick transport, command, args, env, headers; validated
   before saving.
 
-### 🔒 Safe operations
+### Safe operations
 - **Non-destructive writes** — only the `mcpServers` section is touched; everything else
   in the file is preserved.
 - **Atomic + backed up** — every change is written atomically and a timestamped backup is
@@ -69,7 +69,7 @@ config files with care.
 - **Diff preview** before anything is written.
 - **Enable / disable** a server in place without deleting it.
 
-### 🔍 Inspection & debugging (a terminal MCP Inspector)
+### Inspection & debugging (a terminal MCP Inspector)
 - **Live status** over the real MCP protocol: `● running / ○ stopped / ⚠ error` with
   handshake latency.
 - **Capability listing** — a server's actual **tools, resources and prompts** (with input
@@ -78,16 +78,16 @@ config files with care.
 - **Ad-hoc inspection** — point Tappy at a server that isn't installed anywhere yet via
   `--command` / `--url`.
 
-### 📊 Monitoring
+### Monitoring
 - Probe one server or all of them; see latency and tool counts at a glance.
 
-### 🛡 Security
+### Security
 - **Tool-definition pinning** — Tappy fingerprints each server's tools the first time it
   trusts them and **warns you if they change later**, catching post-approval tool
   mutation ("rug-pull" / tool poisoning).
 - Secret `env`/`header` **values are masked** in all output.
 
-### 👥 Team registry
+### Team registry
 - A single git-tracked **`tappy.team.json`** as the source of truth for approved servers.
 - **`tappy apply`** provisions it into everyone's local clients.
 - **`tappy lint`** reports drift and exits non-zero on unapproved servers — a ready-made
