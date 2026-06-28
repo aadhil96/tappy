@@ -8,14 +8,47 @@ from __future__ import annotations
 import json as _json
 import sys
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
 
 from .core.config_store import DiscoveredConfig
-from .core.models import Health, HealthStatus, ServerDef
+from .core.models import Health, HealthStatus, ServerDef, Transport
 
 console = Console()
 err_console = Console(stderr=True)
+
+# One consistent table style for the whole CLI.
+_BOX = box.ROUNDED
+_HEADER = "bold cyan"
+
+_TRANSPORT_STYLE = {
+    Transport.STDIO: "blue",
+    Transport.HTTP: "magenta",
+    Transport.SSE: "magenta",
+}
+
+
+def _new_table(title: str | None = None, caption: str | None = None) -> Table:
+    return Table(
+        title=title,
+        caption=caption,
+        box=_BOX,
+        header_style=_HEADER,
+        title_style="bold",
+        title_justify="left",
+        caption_justify="right",
+        expand=False,
+        pad_edge=False,
+    )
+
+
+def _enabled_glyph(enabled: bool) -> str:
+    return "[green]●[/green] on" if enabled else "[dim]○ off[/dim]"
+
+
+def _transport_label(transport: Transport) -> str:
+    return f"[{_TRANSPORT_STYLE.get(transport, 'white')}]{transport.value}[/]"
 
 
 def print_json(data) -> None:
@@ -67,36 +100,43 @@ def status_to_dict(status: HealthStatus) -> dict:
 
 
 def render_servers(rows: list[tuple[DiscoveredConfig, ServerDef]]) -> None:
-    table = Table(title="MCP servers", header_style="bold")
-    table.add_column("Server")
-    table.add_column("Transport")
-    table.add_column("Client")
-    table.add_column("Enabled")
-    table.add_column("Launch", overflow="fold", max_width=50)
-    for dc, server in rows:
-        table.add_row(
-            server.name,
-            server.transport.value,
-            dc.config.display_name,
-            "[green]yes[/green]" if server.enabled else "[dim]no[/dim]",
-            server.summary(),
-        )
     if not rows:
         console.print("[dim]No servers found in any client config.[/dim]")
         return
+    n = len(rows)
+    table = _new_table(title="MCP servers", caption=f"{n} server{'s' if n != 1 else ''}")
+    table.add_column("Server", style="bold", no_wrap=True)
+    table.add_column("Transport", no_wrap=True)
+    table.add_column("Client", style="dim", no_wrap=True)
+    table.add_column("Enabled", no_wrap=True)
+    # Only the launch command may be shortened — to a single line with an ellipsis.
+    table.add_column("Launch", overflow="ellipsis", no_wrap=True, max_width=48, ratio=1)
+    for dc, server in rows:
+        table.add_row(
+            server.name,
+            _transport_label(server.transport),
+            dc.config.display_name,
+            _enabled_glyph(server.enabled),
+            f"[dim]{server.summary()}[/dim]",
+        )
     console.print(table)
 
 
 def render_clients(discovered: list[DiscoveredConfig]) -> None:
-    table = Table(title="Discovered client configs", header_style="bold")
-    table.add_column("Client")
-    table.add_column("Servers", justify="right")
-    table.add_column("Path", overflow="fold")
-    for dc in discovered:
-        table.add_row(dc.config.display_name, str(len(dc.config.servers)), str(dc.config.path))
     if not discovered:
         console.print("[dim]No client configs discovered.[/dim]")
         return
+    table = _new_table(title="Discovered client configs")
+    table.add_column("Client", style="bold", no_wrap=True)
+    table.add_column("#", justify="right", no_wrap=True)
+    table.add_column("Path", style="dim", overflow="ellipsis", no_wrap=True, ratio=1)
+    for dc in discovered:
+        count = len(dc.config.servers)
+        table.add_row(
+            dc.config.display_name,
+            f"[cyan]{count}[/cyan]" if count else "[dim]0[/dim]",
+            str(dc.config.path),
+        )
     console.print(table)
 
 
@@ -113,41 +153,45 @@ def render_status_line(name: str, status: HealthStatus) -> None:
         )
 
 
+def _tools_table(status: HealthStatus, title: str | None = None) -> Table:
+    t = _new_table(title=title)
+    # Tool names always shown in full; descriptions wrap to remain readable.
+    t.add_column("Tool", style="bold green", no_wrap=True)
+    t.add_column("Description", ratio=1)
+    for tool in status.tools:
+        t.add_row(tool.name, tool.description or "[dim]—[/dim]")
+    return t
+
+
 def render_inspect(server: ServerDef, status: HealthStatus, fingerprint: str | None) -> None:
-    console.print(f"[bold]{server.name}[/bold]  [dim]{server.transport.value}[/dim]")
-    console.print(f"launch: {server.summary()}")
+    console.print()
+    console.print(f"[bold]{server.name}[/bold]  {_transport_label(server.transport)}")
+    console.print(f"[dim]launch:[/dim] {server.summary()}")
     render_status_line(server.name, status)
     if status.health is not Health.RUNNING:
+        console.print()
         return
     if fingerprint:
-        console.print(f"tools fingerprint: [dim]{fingerprint[:16]}…[/dim]")
+        console.print(f"[dim]fingerprint:[/dim] {fingerprint[:16]}…")
     if status.tools:
-        t = Table(title="Tools", header_style="bold", show_lines=False)
-        t.add_column("Name")
-        t.add_column("Description", overflow="fold")
-        for tool in status.tools:
-            t.add_row(tool.name, tool.description or "[dim]—[/dim]")
-        console.print(t)
+        console.print()
+        console.print(_tools_table(status, title=f"Tools ({len(status.tools)})"))
     if status.resources:
-        console.print("\n[bold]Resources[/bold]")
+        console.print(f"\n[bold]Resources[/bold] [dim]({len(status.resources)})[/dim]")
         for r in status.resources:
-            console.print(f"  • {r}")
+            console.print(f"  [cyan]•[/cyan] {r}")
     if status.prompts:
-        console.print("\n[bold]Prompts[/bold]")
+        console.print(f"\n[bold]Prompts[/bold] [dim]({len(status.prompts)})[/dim]")
         for p in status.prompts:
-            console.print(f"  • {p}")
+            console.print(f"  [cyan]•[/cyan] {p}")
+    console.print()
 
 
 def render_tools(status: HealthStatus) -> None:
     if not status.tools:
         console.print("[dim]No tools.[/dim]")
         return
-    t = Table(header_style="bold")
-    t.add_column("Tool")
-    t.add_column("Description", overflow="fold")
-    for tool in status.tools:
-        t.add_row(tool.name, tool.description or "[dim]—[/dim]")
-    console.print(t)
+    console.print(_tools_table(status, title=f"Tools ({len(status.tools)})"))
 
 
 def call_result_to_dict(result) -> dict:
